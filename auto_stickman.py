@@ -758,16 +758,18 @@ async def async_auto_voice(script_text, title="Story"):
                     const buttons = Array.from(document.querySelectorAll('button')).filter(b => b.innerText.includes('Play'));
                     buttons.forEach(btn => {{
                         const k = Object.keys(btn).find(key => key.startsWith('__reactFiber'));
-                        let fiber = btn[k];
-                        while (fiber) {{
-                            if (fiber.memoizedState && fiber.memoizedProps && fiber.memoizedProps.scene) break;
-                            fiber = fiber.return;
+                        let compFiber = btn[k];
+                        while (compFiber && !(compFiber.memoizedProps && compFiber.memoizedProps.scene)) {{
+                            compFiber = compFiber.return;
                         }}
-                        if (!fiber) return;
-                        let h = fiber.memoizedState;
+                        if (!compFiber) return;
+                        let h = compFiber.memoizedState;
                         while (h) {{
                             if (h.memoizedState && typeof h.memoizedState === 'object' && 'current' in h.memoizedState) {{
-                                h.memoizedState.current = null;
+                                if (h.memoizedState.current) {{
+                                    try {{ h.memoizedState.current.pause(); }} catch (e) {{}}
+                                    h.memoizedState.current = null;
+                                }}
                             }}
                             h = h.next;
                         }}
