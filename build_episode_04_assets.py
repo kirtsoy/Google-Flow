@@ -25,9 +25,9 @@ SCENES = [
     (7, "Because until you take action, you remain stuck in the exact same loop, where...")
 ]
 
-# Standard scene start offsets in Google Flow (8.0s per scene)
-SCENE_OFFSETS = [0.40, 8.40, 16.40, 24.40, 32.40, 40.40, 48.40]
-TOTAL_EPISODE_DURATION = 56.0
+# Exact measured scene start offsets in exported Google Flow video (8.0s per scene)
+SCENE_OFFSETS = [0.40, 8.40, 16.44, 24.48, 32.52, 40.61, 48.65]
+TOTAL_EPISODE_DURATION = 56.30
 
 COLOR_RED = r"&H002A2AFF&"     # Danger / Traps / Negative
 COLOR_GREEN = r"&H0032CD32&"   # Dopamine / Action / Progress
