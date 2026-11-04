@@ -152,7 +152,7 @@ def generate_srt(chunks):
 
 def generate_ass(chunks, total_duration):
     header = f"""[Script Info]
-Title: Stickman Universe Rock-Solid Montserrat Kinetic Captions with HUD Progress
+Title: Stickman Universe Clean Montserrat Kinetic Captions
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
@@ -163,18 +163,11 @@ PlayResY: 1920
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: StickmanWords,Montserrat,84,&H00FFFFFF,&H0000D7FF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5.0,0.0,2,50,50,380,1
-Style: TopProgressBarBG,Arial,10,&H40000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
-Style: TopProgressBarFill,Arial,10,&H0000D7FF,&H00000000,&H00FFFF00,&H00000000,0,0,0,0,100,100,0,0,1,1.0,0,7,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = []
-
-    bg_start = format_ass_time(0.0)
-    bg_end = format_ass_time(total_duration)
-    events.append(f"Dialogue: 0,{bg_start},{bg_end},TopProgressBarBG,,0,0,0,,{{\\p1\\pos(40,35)}}m 0 0 l 1000 0 l 1000 8 l 0 8{{\\p0}}")
-    events.append(f"Dialogue: 1,{bg_start},{bg_end},TopProgressBarFill,,0,0,0,,{{\\p1\\pos(40,35)\\clip(40,35,40,43)\\t(0,{int(total_duration*1000)},\\clip(40,35,1040,43))}}m 0 0 l 1000 0 l 1000 8 l 0 8{{\\p0}}")
 
     for c_idx, chunk in enumerate(chunks):
         chunk_start = chunk[0]["start"]
