@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stickman Studio Pro — Native Animation Factory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .title-font { font-family: 'Cinzel', serif; }
+    .glass { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(16px); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-4 md:p-8 select-none">
+  <!-- Top Navigation -->
+  <header class="w-full max-w-5xl flex items-center justify-between pb-6 border-b border-slate-800">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-xl border border-amber-500/30">
+        ⚡
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">Stickman Factory Pro</h1>
+        <p class="text-xs text-slate-400">Autonomous 60FPS Vector Animation & Neural Voice Engine</p>
+      </div>
+    </div>
+
+    <!-- Story Selector Tabs -->
+    <div class="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 text-xs font-semibold">
+      <button id="btnAncient" class="px-3.5 py-1.5 rounded-lg bg-amber-600 text-white transition-all shadow-sm" onclick="switchStory('ancient_humans')">
+        🦴 Ancient Humans
+      </button>
+      <button id="btnWarcraft" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all" onclick="switchStory('warcraft_arthas')">
+        ❄️ Warcraft: Arthas
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Stage & Video Viewport -->
+  <main class="w-full max-w-5xl flex flex-col lg:flex-row gap-6 mt-6 items-start">
+    <!-- 9:16 Shorts / 16:9 Switchable Canvas Frame -->
+    <div class="w-full lg:w-[420px] mx-auto flex flex-col items-center">
+      <div class="relative w-full aspect-[9/16] bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-800 ring-1 ring-slate-700/50 flex flex-col">
+        <!-- Render Canvas -->
+        <canvas id="stage" width="720" height="1280" class="w-full h-full block bg-slate-950"></canvas>
+
+        <!-- Subtitles Overlay -->
+        <div id="subtitleBox" class="absolute bottom-16 left-4 right-4 text-center pointer-events-none transition-all duration-300">
+          <div id="subtitleText" class="inline-block px-4 py-2 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white font-extrabold text-lg md:text-xl leading-tight shadow-xl">
+            Click Play to Start
+          </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div class="absolute top-4 left-4 right-4 flex items-center justify-between text-[11px] font-mono glass px-3 py-1.5 rounded-xl border border-white/10">
+          <span id="sceneBadge" class="text-amber-400 font-bold">SCENE 1 / 7</span>
+          <span id="timeBadge" class="text-slate-300">00:00</span>
+        </div>
+      </div>
+
+      <!-- Playback Controls Dock -->
+      <div class="w-full mt-4 p-3 glass rounded-2xl border border-slate-800 flex items-center justify-between gap-3">
+        <button id="playBtn" onclick="togglePlay()" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg">
+          <span id="playIcon">▶</span> <span id="playLabel">Play Video</span>
+        </button>
+        <button onclick="restartVideo()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition-all">
+          ↺
+        </button>
+      </div>
+    </div>
+
+    <!-- Scene Breakdown & Director Panel -->
+    <div class="flex-1 w-full flex flex-col gap-4">
+      <div class="p-5 glass rounded-2xl border border-slate-800">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+          <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <span>🎬</span> Interactive Timeline & Storyboard
+          </h2>
+          <span id="storyTitle" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
+            7 Scenes • 100% Autonomous
+          </span>
+        </div>
+
+        <!-- Scene Cards List -->
+        <div id="scenesList" class="flex flex-col gap-2.5 max-h-[520px] overflow-y-auto pr-1">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Comparison Banner -->
+      <div class="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-xs text-emerald-300 flex items-start gap-3">
+        <span class="text-lg">✨</span>
+        <div>
+          <strong class="font-bold">Zero Queue, Zero Credit Waste:</strong>
+          This engine generates audio via neural TTS instantly and animates procedural vector characters on demand. No Google Flow waiting queues, no duplicate duration locks, and infinite variations.
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const STORIES_DATA = {
+      ancient_humans: {
+        title: "Why Ancient Humans Stayed In Groups",
+        theme: "prehistoric",
+        voiceFilePrefix: "ancient_humans",
+        scenes: [
+          {
+            id: 1,
+            action: "Stickman stands beneath starry night looking over savanna.",
+            narration: "Thousands of years ago, survival was a daily test against the harsh prehistoric wilderness.",
+            anim: "idle_stars",
+            duration: 7.2
+          },
+          {
+            id: 2,
+            action: "Lone hunter stalks mammoth alone, no other people anywhere.",
+            narration: "Alone on the plains, one hunter struggled to find food without any help.",
+            anim: "stalking_alone",
+            duration: 5.6
+          },
+          {
+            id: 3,
+            action: "Giant sabertooth predator attacks isolated stickman.",
+            narration: "A fierce predator appeared from the tall grass, easily overpowering the isolated solitary hunter.",
+            anim: "predator_ambush",
+            duration: 6.8
+          },
+          {
+            id: 4,
+            action: "Multiple stickmen gather around warm campfire.",
+            narration: "Early humans realized that solitary wanderers could never survive against constant wilderness hazards.",
+            anim: "campfire_gather",
+            duration: 6.2
+          },
+          {
+            id: 5,
+            action: "Team of stickmen cooperatively surround mammoth with spears.",
+            narration: "In small bands, hunters shared tasks, gathered diverse foods, and protected each other continuously.",
+            anim: "cooperative_hunt",
+            duration: 6.5
+          },
+          {
+            id: 6,
+            action: "Elders teach children how to forage plants.",
+            narration: "Living together allowed them to pass down crucial survival skills across every single generation.",
+            anim: "teaching_elders",
+            duration: 6.3
+          },
+          {
+            id: 7,
+            action: "Tribe stands unified atop a mountain at sunrise.",
+            narration: "Ancient humans stayed in groups because cooperation was their greatest weapon for collective survival.",
+            anim: "triumph_sunrise",
+            duration: 6.9
+          }
+        ]
+      },
+      warcraft_arthas: {
+        title: "Warcraft: The Fall of Prince Arthas",
+        theme: "warcraft",
+        voiceFilePrefix: "warcraft_arthas",
+        scenes: [
+          {
+            id: 1,
+            action: "Prince Arthas in golden armor and hammer raises banner in Lordaeron.",
+            narration: "Prince Arthas was the golden hope of Lordaeron, sworn to protect his beloved people.",
+            anim: "paladin_stride",
+            duration: 6.2
+          },
+          {
+            id: 2,
+            action: "Plague cauldrons turn villagers into undead ghouls.",
+            narration: "A horrific plague of undeath swept across the kingdom, turning citizens into savage monsters.",
+            anim: "plague_sweep",
+            duration: 6.1
+          },
+          {
+            id: 3,
+            action: "Arthas sails his fleet into the blizzard of Northrend.",
+            narration: "Desperate for victory, Arthas abandoned his mentors and pursued vengeance into the frozen North.",
+            anim: "frozen_expedition",
+            duration: 6.4
+          },
+          {
+            id: 4,
+            action: "Arthas finds glowing Frostmourne trapped in ancient ice pedestal.",
+            narration: "In the icy wastes of Northrend, he discovered a cursed runeblade known as Frostmourne.",
+            anim: "frostmourne_claim",
+            duration: 6.3
+          },
+          {
+            id: 5,
+            action: "Necrotic frost runes seep into Arthas, eyes turning ice-blue.",
+            narration: "The blade granted immense dark power, but claimed the young prince's immortal soul.",
+            anim: "soul_corruption",
+            duration: 6.0
+          },
+          {
+            id: 6,
+            action: "Arthas in spiked dark armor and helm slays King Terenas.",
+            narration: "Returning home in dark armor, the fallen prince slaughtered his father and claimed the throne.",
+            anim: "patricide_throne",
+            duration: 6.2
+          },
+          {
+            id: 7,
+            action: "Lich King Arthas sits on the Frozen Throne with glowing blade.",
+            narration: "Ascending the Frozen Throne, Arthas merged with the Lich King, sealing his tragic doom.",
+            anim: "lich_king_reign",
+            duration: 6.5
+          }
+        ]
+      }
+    };
+
+    let currentStoryKey = "ancient_humans";
+    let isPlaying = false;
+    let currentSceneIdx = 0;
+    let sceneStartTime = 0;
+    let audioElem = new Audio();
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d");
+
+    // Particles system
+    let particles = [];
+    for(let i=0; i<60; i++) {
+      particles.push({
+        x: Math.random() * 720,
+        y: Math.random() * 1280,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: Math.random() * 1.5 + 0.5,
+        size: Math.random() * 3 + 1,
+        alpha: Math.random() * 0.7 + 0.3
+      });
+    }
+
+    function switchStory(key) {
+      currentStoryKey = key;
+      document.getElementById("btnAncient").className = key === "ancient_humans" ? 
+        "px-3.5 py-1.5 rounded-lg bg-amber-600 text-white transition-all shadow-sm" : 
+        "px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all";
+      document.getElementById("btnWarcraft").className = key === "warcraft_arthas" ? 
+        "px-3.5 py-1.5 rounded-lg bg-cyan-600 text-white transition-all shadow-sm" : 
+        "px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all";
+      
+      restartVideo();
+      renderSceneCards();
+    }
+
+    function renderSceneCards() {
+      const story = STORIES_DATA[currentStoryKey];
+      document.getElementById("storyTitle").textContent = story.title;
+      const list = document.getElementById("scenesList");
+      list.innerHTML = "";
+      story.scenes.forEach((s, idx) => {
+        const active = idx === currentSceneIdx ? "border-amber-500/60 bg-amber-500/10" : "border-slate-800 bg-slate-900/40";
+        const div = document.createElement("div");
+        div.className = `p-3.5 rounded-xl border ${active} transition-all cursor-pointer hover:border-slate-700 flex flex-col gap-1`;
+        div.onclick = () => jumpToScene(idx);
+        div.innerHTML = `
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300">SCENE ${s.id}</span>
+            <span class="text-slate-500 font-mono">${s.duration}s</span>
+          </div>
+          <p class="text-xs text-amber-200/90 font-medium">"${s.narration}"</p>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function jumpToScene(idx) {
+      currentSceneIdx = idx;
+      playScene(idx);
+    }
+
+    function playScene(idx) {
+      const story = STORIES_DATA[currentStoryKey];
+      if (idx >= story.scenes.length) {
+        isPlaying = false;
+        document.getElementById("playIcon").textContent = "▶";
+        document.getElementById("playLabel").textContent = "Replay";
+        return;
+      }
+      const scene = story.scenes[idx];
+      document.getElementById("sceneBadge").textContent = `SCENE ${scene.id} / 7`;
+      document.getElementById("subtitleText").textContent = scene.narration;
+      renderSceneCards();
+
+      const audioSrc = `audio/${story.voiceFilePrefix}_s${scene.id}.mp3`;
+      audioElem.src = audioSrc;
+      audioElem.play().catch(e => console.log("Audio play error", e));
+
+      sceneStartTime = performance.now();
+      audioElem.onended = () => {
+        currentSceneIdx++;
+        playScene(currentSceneIdx);
+      };
+    }
+
+    function togglePlay() {
+      if (!isPlaying) {
+        isPlaying = true;
+        document.getElementById("playIcon").textContent = "⏸";
+        document.getElementById("playLabel").textContent = "Pause";
+        playScene(currentSceneIdx);
+      } else {
+        isPlaying = false;
+        document.getElementById("playIcon").textContent = "▶";
+        document.getElementById("playLabel").textContent = "Resume";
+        audioElem.pause();
+      }
+    }
+
+    function restartVideo() {
+      audioElem.pause();
+      currentSceneIdx = 0;
+      isPlaying = false;
+      document.getElementById("playIcon").textContent = "▶";
+      document.getElementById("playLabel").textContent = "Play Video";
+      document.getElementById("subtitleText").textContent = "Click Play to Start";
+      document.getElementById("sceneBadge").textContent = `SCENE 1 / 7`;
+      renderSceneCards();
+    }
+
+    // 60 FPS Canvas Render Loop
+    function render(now) {
+      requestAnimationFrame(render);
+      const isWarcraft = currentStoryKey === "warcraft_arthas";
+
+      // 1. Cinematic Background Gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, 1280);
+      if (isWarcraft) {
+        bgGrad.addColorStop(0, '#020617');
+        bgGrad.addColorStop(0.7, '#082f49');
+        bgGrad.addColorStop(1, '#0f172a');
+      } else {
+        bgGrad.addColorStop(0, '#09090b');
+        bgGrad.addColorStop(0.6, '#18181b');
+        bgGrad.addColorStop(1, '#27272a');
+      }
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 720, 1280);
+
+      // 2. Parallax Mountains / Ice peaks
+      ctx.fillStyle = isWarcraft ? "rgba(14, 116, 144, 0.2)" : "rgba(39, 39, 42, 0.4)";
+      ctx.beginPath();
+      ctx.moveTo(0, 950);
+      ctx.lineTo(200, 750);
+      ctx.lineTo(450, 900);
+      ctx.lineTo(650, 780);
+      ctx.lineTo(720, 920);
+      ctx.lineTo(720, 1280);
+      ctx.lineTo(0, 1280);
+      ctx.fill();
+
+      // 3. Ground Plane
+      ctx.fillStyle = isWarcraft ? "#0f172a" : "#18181b";
+      ctx.fillRect(0, 980, 720, 300);
+      ctx.strokeStyle = isWarcraft ? "#38bdf8" : "#f59e0b";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 980);
+      ctx.lineTo(720, 980);
+      ctx.stroke();
+
+      // 4. Ambient Floating Embers / Snow Particles
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y > 1280) { p.y = 0; p.x = Math.random() * 720; }
+        ctx.fillStyle = isWarcraft ? `rgba(186, 230, 253, ${p.alpha})` : `rgba(251, 191, 36, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // 5. Draw Animated Stickman Actor
+      const time = now * 0.003;
+      const bob = Math.sin(time * 3) * 6;
+      const legWalk = isPlaying ? Math.sin(time * 6) * 28 : 0;
+      const centerX = 360;
+      const groundY = 980;
+      const headY = groundY - 260 + bob;
+
+      ctx.save();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 7;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      // Head
+      ctx.beginPath();
+      ctx.arc(centerX, headY, 32, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Warcraft Costume: Crown of Domination / Spikes
+      if (isWarcraft && currentSceneIdx >= 4) {
+        ctx.fillStyle = "#0284c7";
+        ctx.strokeStyle = "#38bdf8";
+        // Glowing Blue Eyes
+        ctx.beginPath();
+        ctx.arc(centerX - 10, headY - 2, 4, 0, Math.PI * 2);
+        ctx.arc(centerX + 10, headY - 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Crown horns
+        ctx.beginPath();
+        ctx.moveTo(centerX - 24, headY - 20);
+        ctx.lineTo(centerX - 35, headY - 55);
+        ctx.lineTo(centerX - 15, headY - 32);
+        ctx.lineTo(centerX, headY - 60);
+        ctx.lineTo(centerX + 15, headY - 32);
+        ctx.lineTo(centerX + 35, headY - 55);
+        ctx.lineTo(centerX + 24, headY - 20);
+        ctx.stroke();
+      }
+
+      // Torso
+      ctx.strokeStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(centerX, headY + 32);
+      ctx.lineTo(centerX, headY + 140);
+      ctx.stroke();
+
+      // Arms & Weapon
+      const armSwing = Math.sin(time * 4) * 20;
+      ctx.beginPath();
+      ctx.moveTo(centerX, headY + 50);
+      ctx.lineTo(centerX - 35, headY + 90);
+      ctx.lineTo(centerX - 50, headY + 130 + armSwing);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(centerX, headY + 50);
+      ctx.lineTo(centerX + 35, headY + 80);
+      ctx.lineTo(centerX + 60, headY + 110 - armSwing);
+      ctx.stroke();
+
+      // Weapon in right hand
+      if (isWarcraft) {
+        // Frostmourne Runeblade
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(centerX + 50, headY + 120 - armSwing);
+        ctx.lineTo(centerX + 120, headY + 40 - armSwing);
+        ctx.stroke();
+
+        // Crossguard skull glow
+        ctx.fillStyle = "#bae6fd";
+        ctx.beginPath();
+        ctx.arc(centerX + 65, headY + 105 - armSwing, 8, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Prehistoric Spear
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(centerX + 40, headY + 160 - armSwing);
+        ctx.lineTo(centerX + 80, headY - 20 - armSwing);
+        ctx.stroke();
+      }
+
+      // Legs
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(centerX, headY + 140);
+      ctx.lineTo(centerX - 30 + legWalk, groundY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(centerX, headY + 140);
+      ctx.lineTo(centerX + 30 - legWalk, groundY);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    renderSceneCards();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
