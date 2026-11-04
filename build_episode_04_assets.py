@@ -1,5 +1,5 @@
-import os, sys, json, asyncio, subprocess
-import edge_tts
+import os, sys, json, subprocess
+from faster_whisper import WhisperModel
 
 if sys.platform == "win32":
     try:
@@ -15,19 +15,7 @@ SUB_DIR = os.path.join(EP_DIR, "subtitles")
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(SUB_DIR, exist_ok=True)
 
-SCENES = [
-    (1, "You have all the tutorials, blueprints, and motivation. So why is another year gone, and nothing changed?"),
-    (2, "Your brain mistakes reading advice for real action, drowning you in cheap, unearned dopamine."),
-    (3, "Every video triggers artificial dopamine, giving you the rush of winning without taking a single step."),
-    (4, "To your ancient ancestors, expending precious calories on uncertain rewards meant certain starvation."),
-    (5, "Your primitive brain views difficult new ambitions as life-threatening wastes of vital biological energy."),
-    (6, "Progress never begins with more research. It starts the second you choose friction over safe comfort."),
-    (7, "Because until you take action, you remain stuck in the exact same loop, where...")
-]
-
-# Exact measured scene start offsets in exported Google Flow video (8.0s per scene)
-SCENE_OFFSETS = [0.40, 8.40, 16.44, 24.48, 32.52, 40.61, 48.65]
-TOTAL_EPISODE_DURATION = 56.30
+FULL_AUDIO_PATH = os.path.join(AUDIO_DIR, "full_video_audio.wav")
 
 COLOR_RED = r"&H002A2AFF&"     # Danger / Traps / Negative
 COLOR_GREEN = r"&H0032CD32&"   # Dopamine / Action / Progress
@@ -40,6 +28,7 @@ SEMANTIC_COLORS = {
     "TRAP": COLOR_RED, "DROWNING": COLOR_RED, "CHEAP": COLOR_RED,
     "UNEARNED": COLOR_RED, "STARVATION": COLOR_RED, "PANIC": COLOR_RED,
     "LOOP": COLOR_RED, "GONE": COLOR_RED, "NOTHING": COLOR_RED, "WASTES": COLOR_RED,
+    "LIFE-THREATENING": COLOR_RED, "THREATENING": COLOR_RED,
     # Green (Dopamine / Progress)
     "DOPAMINE": COLOR_GREEN, "WINNING": COLOR_GREEN, "PROGRESS": COLOR_GREEN,
     "REWARDS": COLOR_GREEN, "ACTION": COLOR_GREEN, "EXECUTION": COLOR_GREEN, "STEP": COLOR_GREEN,
@@ -53,51 +42,13 @@ SEMANTIC_COLORS = {
     "SECOND": COLOR_GOLD, "MOTIVATION": COLOR_GOLD, "RUSH": COLOR_GOLD
 }
 
-def get_word_color(word_clean):
-    return SEMANTIC_COLORS.get(word_clean.upper(), COLOR_WHITE)
+def clean_word_for_lookup(w):
+    clean = w.upper().replace(",", "").replace(".", "").replace("?", "").replace("!", "").replace(":", "").replace(";", "")
+    return clean.strip()
 
-async def extract_words_for_episode():
-    print("🎙 Extracting ground-truth word boundaries scaled to Adam audio...")
-    all_words = []
-    
-    for idx, text in SCENES:
-        scene_id = idx
-        offset = SCENE_OFFSETS[scene_id - 1]
-        wav_path = os.path.join(AUDIO_DIR, f"scene_{scene_id}_adam.wav")
-        
-        # Measure actual Adam wav duration
-        probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', wav_path]
-        adam_dur = float(subprocess.check_output(probe_cmd).decode().strip())
-        
-        # Get raw edge-tts word timings
-        comm = edge_tts.Communicate(text, "en-US-ChristopherNeural", boundary="WordBoundary")
-        raw_words = []
-        async for chunk in comm.stream():
-            if chunk["type"] == "WordBoundary":
-                raw_words.append({
-                    "word": chunk["text"],
-                    "start": chunk["offset"] / 10_000_000,
-                    "dur": chunk["duration"] / 10_000_000
-                })
-        
-        if not raw_words:
-            continue
-            
-        edge_total = raw_words[-1]["start"] + raw_words[-1]["dur"]
-        scale_ratio = adam_dur / edge_total if edge_total > 0 else 1.0
-        
-        for w in raw_words:
-            scaled_start = offset + (w["start"] * scale_ratio)
-            scaled_dur = w["dur"] * scale_ratio
-            all_words.append({
-                "scene": scene_id,
-                "word": w["word"],
-                "start": round(scaled_start, 3),
-                "end": round(scaled_start + scaled_dur, 3),
-                "dur": round(scaled_dur, 3)
-            })
-            
-    return all_words
+def get_word_color(word_str):
+    clean = clean_word_for_lookup(word_str)
+    return SEMANTIC_COLORS.get(clean, COLOR_WHITE)
 
 def format_ass_time(sec):
     h = int(sec // 3600)
@@ -117,32 +68,90 @@ def format_srt_time(sec):
         ms = 999
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-def build_phrases(words, max_words=3):
-    phrases = []
-    for scene_id in range(1, 8):
-        s_words = [w for w in words if w["scene"] == scene_id]
-        for i in range(0, len(s_words), max_words):
-            chunk = s_words[i:i + max_words]
-            if chunk:
-                phrases.append({
-                    "scene": scene_id,
-                    "start": chunk[0]["start"],
-                    "end": chunk[-1]["end"],
-                    "words": chunk
-                })
-    return phrases
+def get_audio_duration(path):
+    cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path]
+    return float(subprocess.check_output(cmd).decode().strip())
 
-def generate_srt(phrases):
+def transcribe_and_align_whisper(audio_path):
+    print("🎙 Transcribing full audio directly with faster-whisper (word-level ground truth)...")
+    model = WhisperModel('base.en', device='cpu', compute_type='int8')
+    segments, info = model.transcribe(audio_path, word_timestamps=True)
+
+    raw_words = []
+    for seg in segments:
+        for w in seg.words:
+            txt = w.word.strip()
+            if not txt:
+                continue
+            if txt.startswith('-') and raw_words:
+                raw_words[-1]['word'] += txt
+                raw_words[-1]['end'] = float(w.end)
+            else:
+                raw_words.append({
+                    'word': txt,
+                    'start': float(w.start),
+                    'end': float(w.end)
+                })
+
+    chunks = []
+    current_chunk = []
+
+    for i, w in enumerate(raw_words):
+        current_chunk.append(w)
+        is_last = (i == len(raw_words) - 1)
+        
+        pause_gap = 0.0
+        if not is_last:
+            pause_gap = raw_words[i+1]['start'] - w['end']
+        
+        ends_sentence = any(w['word'].endswith(p) for p in ['.', '?', '!'])
+        chunk_dur = current_chunk[-1]['end'] - current_chunk[0]['start']
+        ends_comma = any(w['word'].endswith(p) for p in [',', ';', ':'])
+        
+        should_break = False
+        if is_last:
+            should_break = True
+        elif ends_sentence:
+            should_break = True
+        elif pause_gap >= 0.40:
+            should_break = True
+        elif len(current_chunk) >= 3:
+            should_break = True
+        elif ends_comma and (len(current_chunk) >= 2 or chunk_dur >= 0.50):
+            should_break = True
+
+        if should_break:
+            chunks.append(current_chunk)
+            current_chunk = []
+
+    refined_chunks = []
+    idx = 0
+    while idx < len(chunks):
+        ch = chunks[idx]
+        if len(ch) == 1 and (ch[0]['end'] - ch[0]['start'] < 0.35) and idx + 1 < len(chunks):
+            next_ch = chunks[idx+1]
+            gap = next_ch[0]['start'] - ch[-1]['end']
+            if gap < 0.25 and len(next_ch) < 3:
+                combined = ch + next_ch
+                refined_chunks.append(combined)
+                idx += 2
+                continue
+        refined_chunks.append(ch)
+        idx += 1
+
+    return raw_words, refined_chunks
+
+def generate_srt(chunks):
     lines = []
-    for idx, p in enumerate(phrases, 1):
-        s_str = format_srt_time(p["start"])
-        e_str = format_srt_time(p["end"])
-        text = " ".join(w["word"] for w in p["words"]).upper()
+    for idx, chunk in enumerate(chunks, 1):
+        s_str = format_srt_time(chunk[0]["start"])
+        e_str = format_srt_time(chunk[-1]["end"])
+        text = " ".join(w["word"] for w in chunk).upper()
         lines.append(f"{idx}\n{s_str} --> {e_str}\n{text}\n")
     return "\n".join(lines)
 
-def generate_ass(phrases):
-    header = """[Script Info]
+def generate_ass(chunks, total_duration):
+    header = f"""[Script Info]
 Title: Stickman Universe Rock-Solid Montserrat Kinetic Captions with HUD Progress
 ScriptType: v4.00+
 WrapStyle: 0
@@ -162,46 +171,57 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = []
 
-    # 1. Top HUD Progress Bar (Layer 0 Background, Layer 1 Animated Fill)
-    # Background rail: X=40 to X=1040 (width 1000px), Y=35 to Y=43 (height 8px)
     bg_start = format_ass_time(0.0)
-    bg_end = format_ass_time(TOTAL_EPISODE_DURATION)
+    bg_end = format_ass_time(total_duration)
     events.append(f"Dialogue: 0,{bg_start},{bg_end},TopProgressBarBG,,0,0,0,,{{\\p1\\pos(40,35)}}m 0 0 l 1000 0 l 1000 8 l 0 8{{\\p0}}")
-    
-    # Smooth animated fill using ASS \t (transition) and \clip
-    events.append(f"Dialogue: 1,{bg_start},{bg_end},TopProgressBarFill,,0,0,0,,{{\\p1\\pos(40,35)\\clip(40,35,40,43)\\t(0,{int(TOTAL_EPISODE_DURATION*1000)},\\clip(40,35,1040,43))}}m 0 0 l 1000 0 l 1000 8 l 0 8{{\\p0}}")
+    events.append(f"Dialogue: 1,{bg_start},{bg_end},TopProgressBarFill,,0,0,0,,{{\\p1\\pos(40,35)\\clip(40,35,40,43)\\t(0,{int(total_duration*1000)},\\clip(40,35,1040,43))}}m 0 0 l 1000 0 l 1000 8 l 0 8{{\\p0}}")
 
-    # 2. Semantic Montserrat-Bold Kinetic Words
-    for p_idx, phrase in enumerate(phrases):
-        p_start = phrase["start"]
-        p_end = phrase["end"]
-        words_in_phrase = phrase["words"]
-        
-        for w_idx, active_word in enumerate(words_in_phrase):
-            w_start = active_word["start"]
-            w_end = active_word["end"]
-            
-            # Safe clamp
-            if w_end <= w_start:
-                w_end = w_start + 0.15
-            
-            w_start_str = format_ass_time(w_start)
-            w_end_str = format_ass_time(w_end)
-            
+    for c_idx, chunk in enumerate(chunks):
+        chunk_start = chunk[0]["start"]
+        last_word_end = chunk[-1]["end"]
+
+        if c_idx + 1 < len(chunks):
+            next_chunk_start = chunks[c_idx + 1][0]["start"]
+            gap_to_next = next_chunk_start - last_word_end
+            if gap_to_next < 0.45:
+                chunk_display_end = next_chunk_start
+            else:
+                chunk_display_end = min(last_word_end + 0.35, next_chunk_start - 0.10)
+        else:
+            chunk_display_end = last_word_end + 0.50
+
+        if chunk_display_end <= chunk_start:
+            chunk_display_end = chunk_start + 0.30
+
+        k = len(chunk)
+        for w_idx, active_word in enumerate(chunk):
+            if w_idx == 0:
+                w_ev_start = chunk_start
+            else:
+                w_ev_start = active_word["start"]
+
+            if w_idx < k - 1:
+                w_ev_end = chunk[w_idx + 1]["start"]
+            else:
+                w_ev_end = chunk_display_end
+
+            if w_ev_end <= w_ev_start:
+                w_ev_end = w_ev_start + 0.10
+
+            w_start_str = format_ass_time(w_ev_start)
+            w_end_str = format_ass_time(w_ev_end)
+
             parts = []
-            for other_w in words_in_phrase:
-                txt = other_w["word"].upper().replace(",", "").replace(".", "").replace("?", "").replace("!", "").replace(":", "")
-                clean_txt = "".join(ch for ch in txt if ch.isalnum())
-                
+            for other_w in chunk:
+                raw_txt = other_w["word"].upper()
                 if other_w == active_word:
-                    # Highlight color from semantic matrix + subtle spring punch-in
-                    color = get_word_color(clean_txt)
+                    color = get_word_color(other_w["word"])
                     if color == COLOR_WHITE:
-                        color = COLOR_GOLD  # Fallback highlight to gold for active word
-                    parts.append(f"{{\\c{color}\\fscx106\\fscy106}}{other_w['word'].upper()}{{\\rStickmanWords}}")
+                        color = COLOR_GOLD
+                    parts.append(f"{{\\c{color}\\fscx108\\fscy108}}{raw_txt}{{\\rStickmanWords}}")
                 else:
-                    parts.append(f"{{\\c&H00FFFFFF&}}{other_w['word'].upper()}{{\\rStickmanWords}}")
-            
+                    parts.append(f"{{\\c&H00FFFFFF&}}{raw_txt}{{\\rStickmanWords}}")
+
             dialogue_text = " ".join(parts)
             events.append(f"Dialogue: 2,{w_start_str},{w_end_str},StickmanWords,,0,0,0,,{dialogue_text}")
 
@@ -211,28 +231,36 @@ def main():
     print("=======================================================")
     print("🎬 GENERATING EPISODE 04 KINETIC ASSETS & HUD")
     print("=======================================================")
-    
-    words = asyncio.run(extract_words_for_episode())
+
+    if not os.path.exists(FULL_AUDIO_PATH):
+        raw_vid = os.path.join(EP_DIR, "stickman_shorts_9x16.mp4")
+        if os.path.exists(raw_vid):
+            print(f"🎵 Extracting full audio from {raw_vid}...")
+            subprocess.run(["ffmpeg", "-y", "-i", raw_vid, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", FULL_AUDIO_PATH], check=True)
+
+    total_duration = get_audio_duration(FULL_AUDIO_PATH)
+    print(f"🎵 Video Audio Duration: {total_duration:.2f}s")
+
+    raw_words, chunks = transcribe_and_align_whisper(FULL_AUDIO_PATH)
+    print(f"✅ Extracted {len(raw_words)} true words, built {len(chunks)} continuous kinetic chunks.")
+
     words_json_path = os.path.join(SUB_DIR, "stickman_captions_words.json")
     with open(words_json_path, "w", encoding="utf-8") as f:
-        json.dump(words, f, indent=2, ensure_ascii=False)
-    print(f"✅ Saved word timestamps: {words_json_path} ({len(words)} words)")
-    
-    phrases = build_phrases(words, max_words=3)
-    
-    srt_content = generate_srt(phrases)
+        json.dump(raw_words, f, indent=2, ensure_ascii=False)
+    print(f"✅ Saved word timestamps: {words_json_path}")
+
+    srt_content = generate_srt(chunks)
     srt_path = os.path.join(SUB_DIR, "stickman_captions.srt")
     with open(srt_path, "w", encoding="utf-8") as f:
         f.write(srt_content)
     print(f"✅ Saved SRT captions: {srt_path}")
-    
-    ass_content = generate_ass(phrases)
+
+    ass_content = generate_ass(chunks, total_duration)
     ass_path = os.path.join(SUB_DIR, "stickman_captions.ass")
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
-    print(f"✅ Saved ASS kinetic captions with HUD Progress Bar: {ass_path}")
+    print(f"✅ Saved ASS rock-solid captions: {ass_path}")
 
-    # Generate 1-tap launcher
     bat_content = f"""@echo off
 setlocal
 title Process Stickman Episode 04
@@ -251,7 +279,7 @@ pause
     bat_path = os.path.join(EP_DIR, "PROCESS_EPISODE_04.bat")
     with open(bat_path, "wb") as f:
         f.write(bat_content.replace("\r\n", "\n").replace("\n", "\r\n").encode("ascii"))
-    print(f"✅ Created 1-tap launcher: {bat_path}")
+    print(f"✅ Updated 1-tap launcher: {bat_path}")
 
     print("\n🎉 ALL EPISODE 04 PRE-FLIGHT ASSETS READY!")
 
