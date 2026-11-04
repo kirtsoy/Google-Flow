@@ -728,9 +728,9 @@ async def async_auto_voice(script_text, title="Story"):
                         mediaId: 'voice-scene-' + item.sceneNumber + '-' + Date.now(),
                         base64: item.base64,
                         mimeType: 'audio/mp3',
-                        name: 'Charon Scene ' + item.sceneNumber,
+                        name: 'Adam Scene ' + item.sceneNumber,
                         duration: duration,
-                        voiceName: 'Charon',
+                        voiceName: 'Adam',
                         dialogueText: item.narration,
                         dialogueUsed: item.narration
                     }}
@@ -743,6 +743,7 @@ async def async_auto_voice(script_text, title="Story"):
                     return {{
                         ...s,
                         warning: void 0,
+                        narration: match.audio.dialogueText,
                         clipTargetLength: match.targetLength,
                         clipPlan: match.clipPlan,
                         audio: match.audio
