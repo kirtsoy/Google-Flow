@@ -27,6 +27,22 @@ NEURAL_VOICE_NARRATOR = "en-US-ChristopherNeural"
 
 STORIES_LIBRARY = [
     {
+        "category": "Human Nature & Psychology",
+        "title": "The Knowing-Doing Trap: Why You Keep Wasting Potential",
+        "emoji": "⏳",
+        "keywords": ["knowing doing trap", "procrastination", "wasting life", "potential", "why dont we do", "lazy", "action"],
+        "script": """VOICE: Charon
+MODE: FLOW VOICE
+CHARACTER: A conflicted, ambitious stickman with messy black cartoon hair, wearing a loose grey hoodie
+SCENE 1 | ACTION: Vertical 9:16 low-angle crash zoom on a tired stickman in an oversized grey hoodie slouched in a dark room, glowing phone screen casting dramatic blue rim light on his messy black hair, eyes wide and mesmerized, clean minimalist white cyclorama studio background, 2.5D hybrid animation with glossy 3D volumetric light bloom and sharp contact drop shadows. | NARRATION: You have all the tutorials, blueprints, and motivation. So why is another year gone, and nothing changed?
+SCENE 2 | ACTION: High-angle 360-degree rotational orbit around stickman drowning in an explosive avalanche of glossy 3D self-help books and glowing podcast play icons falling from the sky, dynamic low-angle perspective, clean minimalist white cyclorama, vibrant volumetric neon light reflections, Octane render 2.5D hybrid animation. | NARRATION: Your brain mistakes reading advice for real action, drowning you in cheap, unearned dopamine.
+SCENE 3 | ACTION: Dynamic tracking shot: stickman sprints furiously on a high-tech glowing chrome treadmill, comic speed lines streaming, giant 3D holographic lightbulb spinning and flashing above his head while treadmill stays locked in the exact same spot on pure white floor, crisp raytraced contact shadows. | NARRATION: Every video triggers artificial dopamine, giving you the rush of winning without taking a single step.
+SCENE 4 | ACTION: Cinematic match cut into prehistoric glacial sunset: low-angle heroic tracking shot of an ancient stickman hunter in tribal fur cloak huddled beside crackling 3D campfire inside a cave, refusing to step out into a roaring blizzard, dramatic warm firelight contrasting with freezing blue shadows. | NARRATION: To your ancient ancestors, expending precious calories on uncertain rewards meant certain starvation.
+SCENE 5 | ACTION: Microscopic fly-through inside stickman's transparent skull: prehistoric alarm sirens blare as tiny stickmen in caveman furs frantically haul heavy iron chains to slam shut a massive bank vault door, hoarding glowing golden glycogen energy cubes in comic panic. | NARRATION: Your primitive brain views difficult new ambitions as life-threatening wastes of vital biological energy.
+SCENE 6 | ACTION: High-energy whip pan back into modern room: stickman aggressively kicks glowing smartphone off table with exaggerated comic anime momentum, standing tall with determination, taking one powerful step forward onto pristine white floor as golden shockwaves ripple outward. | NARRATION: Progress never begins with more research. It starts the second you choose friction over safe comfort.
+SCENE 7 | ACTION: Majestic spiral crane-out: confident stickman walks forward into the distance toward a blinding golden sunrise horizon of giant glowing crystal monoliths, camera rotating down back into a glowing phone screen, warm volumetric god-rays dissolving into clean white background. | NARRATION: Because until you take action, you remain stuck in the exact same loop, where..."""
+    },
+    {
         "category": "Gaming & Psychology",
         "title": "The Tetris Effect: Why Your Brain Plays in the Dark",
         "emoji": "🧩",
@@ -516,7 +532,49 @@ def parse_scenes_from_script(script_text):
 #   - Unlocks START CINEMATIC with 100% reliability
 # ==============================================================================
 
+VOICEBOX_ADAM_PROFILE = "686ee359-9326-402c-ba26-d53488f18dc4"
+
 async def synthesize_line_to_base64(text):
+    # 1. Primary: Voicebox Local Studio (Adam / Kokoro 24kHz)
+    try:
+        payload = json.dumps({
+            "profile_id": VOICEBOX_ADAM_PROFILE,
+            "text": text,
+            "engine": "kokoro"
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:17493/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            gen_res = json.loads(resp.read().decode("utf-8"))
+            gen_id = gen_res.get("id")
+
+        if gen_id:
+            for _ in range(40):
+                await asyncio.sleep(0.3)
+                status_req = urllib.request.urlopen(f"http://127.0.0.1:17493/generate/{gen_id}/status", timeout=5)
+                raw_st = status_req.read().decode("utf-8")
+                lines = [l for l in raw_st.splitlines() if l.startswith("data:")]
+                if lines:
+                    st_data = json.loads(lines[0].replace("data:", "").strip())
+                    if st_data.get("status") == "completed":
+                        wav_data = urllib.request.urlopen(f"http://127.0.0.1:17493/audio/{gen_id}", timeout=5).read()
+                        p = subprocess.Popen(
+                            ["ffmpeg", "-y", "-f", "wav", "-i", "pipe:0", "-c:a", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1"],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+                        )
+                        mp3_bytes, _ = p.communicate(wav_data)
+                        if mp3_bytes and len(mp3_bytes) > 1000:
+                            return base64.b64encode(mp3_bytes).decode("utf-8")
+                        break
+                    elif st_data.get("status") == "failed":
+                        break
+    except Exception as e:
+        print(f"[WARN] Voicebox ({e}), falling back to Edge Neural TTS...")
+
+    # 2. Fallback: Edge Neural TTS
     communicate = edge_tts.Communicate(text, NEURAL_VOICE_NARRATOR)
     mp3_data = bytearray()
     async for chunk in communicate.stream():
