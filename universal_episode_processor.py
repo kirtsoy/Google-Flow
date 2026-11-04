@@ -16,11 +16,12 @@ def get_latest_episode_dir():
     return dirs[0] if dirs else None
 
 def upscale_lanczos_1080p(input_path, output_path):
-    print("🚀 Upscaling to 1080x1920 (Lanczos High Quality)...")
+    print("🚀 Upscaling to 1080x1920 (Lanczos High Quality + NLE-Friendly GOP)...")
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
         "-vf", "scale=1080:1920:flags=lanczos",
         "-c:v", "libx264", "-preset", "fast", "-crf", "17",
+        "-g", "24", "-keyint_min", "24",
         "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
         "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
         "-movflags", "+faststart",
@@ -31,12 +32,13 @@ def upscale_lanczos_1080p(input_path, output_path):
     return output_path
 
 def burn_subtitles_1080p(video_path, ass_path, output_path):
-    print("📝 Burning rock-solid Montserrat-Bold kinetic subtitles...")
+    print("📝 Burning clean Montserrat-Bold kinetic subtitles (NLE-Friendly GOP)...")
     escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
     cmd = [
         "ffmpeg", "-y", "-i", video_path,
         "-vf", f"ass='{escaped_ass}'",
         "-c:v", "libx264", "-preset", "fast", "-crf", "17",
+        "-g", "24", "-keyint_min", "24",
         "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
         "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
         "-movflags", "+faststart",
